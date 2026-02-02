@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '@/contexts/AppContext';
-import { WorkOrderCard } from '@/components/cards/WorkOrderCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -14,115 +13,86 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
   Search,
   Plus,
   Filter,
-  Grid3X3,
-  List,
-  MoreHorizontal,
-  User,
   Building2,
+  User,
+  MapPin,
+  Phone,
+  Mail,
+  MoreHorizontal,
   ClipboardList,
+  FileText,
 } from 'lucide-react';
-import { StatusBadge } from '@/components/common/StatusBadge';
-import { formatCurrency, formatDate } from '@/data/mockData';
-import type { WorkOrderStatus } from '@/types';
+import { formatCurrency } from '@/data/mockData';
+import type { CustomerType } from '@/types';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { cn } from '@/lib/utils';
 
-export function WorkOrderList() {
+export function CustomerList() {
   const navigate = useNavigate();
-  const { workOrders, customers, users } = useApp();
+  const { customers, workOrders, quotes } = useApp();
   
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<WorkOrderStatus | 'all'>('all');
-  const [customerFilter, setCustomerFilter] = useState<string>('all');
-  const [assignedFilter, setAssignedFilter] = useState<string>('all');
+  const [typeFilter, setTypeFilter] = useState<CustomerType | 'all'>('all');
 
-  // Filter work orders
-  const filteredWorkOrders = useMemo(() => {
-    return workOrders.filter(wo => {
+  // Filter customers
+  const filteredCustomers = useMemo(() => {
+    return customers.filter(customer => {
       // Search filter
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
         const matchesSearch = 
-          wo.orderNumber.toLowerCase().includes(query) ||
-          wo.title.toLowerCase().includes(query) ||
-          wo.customer.name.toLowerCase().includes(query) ||
-          wo.description.toLowerCase().includes(query);
+          customer.name.toLowerCase().includes(query) ||
+          customer.email.toLowerCase().includes(query) ||
+          customer.phone.includes(query) ||
+          customer.address.city.toLowerCase().includes(query) ||
+          (customer.orgNumber && customer.orgNumber.includes(query));
         if (!matchesSearch) return false;
       }
 
-      // Status filter
-      if (statusFilter !== 'all' && wo.status !== statusFilter) return false;
-
-      // Customer filter
-      if (customerFilter !== 'all' && wo.customerId !== customerFilter) return false;
-
-      // Assigned filter
-      if (assignedFilter !== 'all') {
-        if (assignedFilter === 'unassigned' && wo.assignedTo) return false;
-        if (assignedFilter !== 'unassigned' && wo.assignedTo !== assignedFilter) return false;
-      }
+      // Type filter
+      if (typeFilter !== 'all' && customer.type !== typeFilter) return false;
 
       return true;
-    }).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  }, [workOrders, searchQuery, statusFilter, customerFilter, assignedFilter]);
+    }).sort((a, b) => a.name.localeCompare(b.name));
+  }, [customers, searchQuery, typeFilter]);
 
-  // Status counts
-  const statusCounts = useMemo(() => {
-    const counts: Record<string, number> = {
-      all: workOrders.length,
-      available: 0,
-      taken: 0,
-      started: 0,
-      paused: 0,
-      completed: 0,
-      invoiced: 0,
+  // Get customer stats
+  const getCustomerStats = (customerId: string) => {
+    const customerWorkOrders = workOrders.filter(wo => wo.customerId === customerId);
+    const customerQuotes = quotes.filter(q => q.customerId === customerId);
+    const totalRevenue = customerWorkOrders
+      .filter(wo => wo.isInvoiced)
+      .reduce((sum, wo) => sum + wo.totalAmount, 0);
+    
+    return {
+      workOrders: customerWorkOrders.length,
+      quotes: customerQuotes.length,
+      totalRevenue,
     };
-    workOrders.forEach(wo => {
-      counts[wo.status] = (counts[wo.status] || 0) + 1;
-    });
-    return counts;
-  }, [workOrders]);
-
-  const statusOptions: { value: WorkOrderStatus | 'all'; label: string; count: number }[] = [
-    { value: 'all', label: 'Alla', count: statusCounts.all },
-    { value: 'available', label: 'Lediga', count: statusCounts.available },
-    { value: 'taken', label: 'Tagna', count: statusCounts.taken },
-    { value: 'started', label: 'Påbörjade', count: statusCounts.started },
-    { value: 'paused', label: 'Pausade', count: statusCounts.paused },
-    { value: 'completed', label: 'Avslutade', count: statusCounts.completed },
-    { value: 'invoiced', label: 'Fakturerade', count: statusCounts.invoiced },
-  ];
+  };
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Arbetsordrar</h1>
-          <p className="text-slate-500">Hantera och följ upp arbetsordrar</p>
+          <h1 className="text-2xl font-bold text-slate-900">Företag & Kontakter</h1>
+          <p className="text-slate-500">Hantera kunder och kontaktpersoner</p>
         </div>
         <Button 
-          onClick={() => navigate('/workorders/new')}
+          onClick={() => navigate('/customers/new')}
           className="bg-blue-600 hover:bg-blue-700"
         >
           <Plus className="w-4 h-4 mr-2" />
-          Ny arbetsorder
+          Ny kund
         </Button>
       </div>
 
@@ -134,83 +104,25 @@ export function WorkOrderList() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
-                placeholder="Sök arbetsordrar..."
+                placeholder="Sök kunder..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
               />
             </div>
 
-            {/* Status Filter */}
-            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as WorkOrderStatus | 'all')}>
+            {/* Type Filter */}
+            <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as CustomerType | 'all')}>
               <SelectTrigger className="w-full lg:w-48">
                 <Filter className="w-4 h-4 mr-2" />
-                <SelectValue placeholder="Status" />
+                <SelectValue placeholder="Typ" />
               </SelectTrigger>
               <SelectContent>
-                {statusOptions.map(option => (
-                  <SelectItem key={option.value} value={option.value}>
-                    <div className="flex items-center justify-between w-full">
-                      <span>{option.label}</span>
-                      <Badge variant="secondary" className="ml-2">{option.count}</Badge>
-                    </div>
-                  </SelectItem>
-                ))}
+                <SelectItem value="all">Alla typer</SelectItem>
+                <SelectItem value="company">Företag</SelectItem>
+                <SelectItem value="private">Privatperson</SelectItem>
               </SelectContent>
             </Select>
-
-            {/* Customer Filter */}
-            <Select value={customerFilter} onValueChange={setCustomerFilter}>
-              <SelectTrigger className="w-full lg:w-48">
-                <Building2 className="w-4 h-4 mr-2" />
-                <SelectValue placeholder="Kund" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Alla kunder</SelectItem>
-                {customers.map(customer => (
-                  <SelectItem key={customer.id} value={customer.id}>
-                    {customer.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {/* Assigned Filter */}
-            <Select value={assignedFilter} onValueChange={setAssignedFilter}>
-              <SelectTrigger className="w-full lg:w-48">
-                <User className="w-4 h-4 mr-2" />
-                <SelectValue placeholder="Tilldelad" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Alla</SelectItem>
-                <SelectItem value="unassigned">Ej tilldelad</SelectItem>
-                {users.map(user => (
-                  <SelectItem key={user.id} value={user.id}>
-                    {user.fullName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {/* View Toggle */}
-            <div className="flex items-center gap-1 border rounded-lg p-1">
-              <Button
-                variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => setViewMode('grid')}
-              >
-                <Grid3X3 className="w-4 h-4" />
-              </Button>
-              <Button
-                variant={viewMode === 'list' ? 'secondary' : 'ghost'}
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => setViewMode('list')}
-              >
-                <List className="w-4 h-4" />
-              </Button>
-            </div>
           </div>
         </CardContent>
       </Card>
@@ -218,77 +130,57 @@ export function WorkOrderList() {
       {/* Results Count */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-slate-500">
-          Visar {filteredWorkOrders.length} av {workOrders.length} arbetsordrar
+          Visar {filteredCustomers.length} av {customers.length} kunder
         </p>
       </div>
 
       {/* Content */}
-      {filteredWorkOrders.length === 0 ? (
+      {filteredCustomers.length === 0 ? (
         <Card className="bg-slate-50 border-dashed">
           <CardContent className="p-12 text-center">
-            <ClipboardList className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-slate-900 mb-2">Inga arbetsordrar hittades</h3>
-            <p className="text-slate-500 mb-4">Prova att ändra dina filter eller skapa en ny arbetsorder.</p>
+            <Building2 className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-slate-900 mb-2">Inga kunder hittades</h3>
+            <p className="text-slate-500 mb-4">Prova att ändra dina filter eller skapa en ny kund.</p>
             <Button 
-              onClick={() => navigate('/workorders/new')}
+              onClick={() => navigate('/customers/new')}
               className="bg-blue-600 hover:bg-blue-700"
             >
               <Plus className="w-4 h-4 mr-2" />
-              Ny arbetsorder
+              Ny kund
             </Button>
           </CardContent>
         </Card>
-      ) : viewMode === 'grid' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filteredWorkOrders.map(workOrder => (
-            <WorkOrderCard key={workOrder.id} workOrder={workOrder} />
-          ))}
-        </div>
       ) : (
-        <Card>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nr</TableHead>
-                <TableHead>Titel</TableHead>
-                <TableHead>Kund</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Datum</TableHead>
-                <TableHead>Tilldelad</TableHead>
-                <TableHead className="text-right">Belopp</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredWorkOrders.map(workOrder => (
-                <TableRow 
-                  key={workOrder.id}
-                  className="cursor-pointer hover:bg-slate-50"
-                  onClick={() => navigate(`/workorders/${workOrder.id}`)}
-                >
-                  <TableCell className="font-mono text-sm">{workOrder.orderNumber}</TableCell>
-                  <TableCell className="font-medium">{workOrder.title}</TableCell>
-                  <TableCell>{workOrder.customer.name}</TableCell>
-                  <TableCell>
-                    <StatusBadge status={workOrder.status} size="sm" />
-                  </TableCell>
-                  <TableCell>{formatDate(workOrder.scheduledDate)}</TableCell>
-                  <TableCell>
-                    {workOrder.assignedUser ? (
-                      <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-xs font-medium text-blue-700">
-                          {workOrder.assignedUser.firstName[0]}{workOrder.assignedUser.lastName[0]}
-                        </div>
-                        <span className="text-sm">{workOrder.assignedUser.firstName}</span>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {filteredCustomers.map(customer => {
+            const stats = getCustomerStats(customer.id);
+            return (
+              <Card 
+                key={customer.id}
+                className="cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
+                onClick={() => navigate(`/customers/${customer.id}`)}
+              >
+                <CardContent className="p-5">
+                  {/* Header */}
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        'w-10 h-10 rounded-lg flex items-center justify-center',
+                        customer.type === 'company' ? 'bg-blue-100' : 'bg-green-100'
+                      )}>
+                        {customer.type === 'company' ? (
+                          <Building2 className="w-5 h-5 text-blue-600" />
+                        ) : (
+                          <User className="w-5 h-5 text-green-600" />
+                        )}
                       </div>
-                    ) : (
-                      <span className="text-sm text-slate-400">Ej tilldelad</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    {formatCurrency(workOrder.totalAmount)}
-                  </TableCell>
-                  <TableCell>
+                      <div>
+                        <h3 className="font-semibold text-slate-900">{customer.name}</h3>
+                        <p className="text-sm text-slate-500">
+                          {customer.type === 'company' ? 'Företag' : 'Privatperson'}
+                        </p>
+                      </div>
+                    </div>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                         <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -296,21 +188,75 @@ export function WorkOrderList() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); navigate(`/workorders/${workOrder.id}`); }}>
+                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); navigate(`/customers/${customer.id}`); }}>
                           Visa detaljer
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); navigate(`/workorders/${workOrder.id}/edit`); }}>
+                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); navigate(`/customers/${customer.id}/edit`); }}>
                           Redigera
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); navigate(`/workorders/new?customer=${customer.id}`); }}>
+                          <ClipboardList className="w-4 h-4 mr-2" />
+                          Ny arbetsorder
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); navigate(`/quotes/new?customer=${customer.id}`); }}>
+                          <FileText className="w-4 h-4 mr-2" />
+                          Ny offert
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
+                  </div>
+
+                  {/* Info */}
+                  <div className="space-y-2 mb-4">
+                    {customer.orgNumber && (
+                      <p className="text-sm text-slate-600">Org.nr: {customer.orgNumber}</p>
+                    )}
+                    {customer.personNumber && (
+                      <p className="text-sm text-slate-600">Personnr: {customer.personNumber}</p>
+                    )}
+                    <div className="flex items-center gap-2 text-sm text-slate-600">
+                      <MapPin className="w-4 h-4 text-slate-400" />
+                      <span>{customer.address.city}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-slate-600">
+                      <Mail className="w-4 h-4 text-slate-400" />
+                      <span className="truncate">{customer.email}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-slate-600">
+                      <Phone className="w-4 h-4 text-slate-400" />
+                      <span>{customer.phone}</span>
+                    </div>
+                  </div>
+
+                  {/* Stats */}
+                  <div className="flex items-center gap-4 pt-4 border-t border-slate-100">
+                    <div className="flex items-center gap-1">
+                      <Badge variant="secondary" className="text-xs">
+                        {stats.workOrders} AO
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Badge variant="secondary" className="text-xs">
+                        {stats.quotes} offert{stats.quotes !== 1 ? 'er' : ''}
+                      </Badge>
+                    </div>
+                    {stats.totalRevenue > 0 && (
+                      <div className="ml-auto">
+                        <span className="text-sm font-medium text-slate-900">
+                          {formatCurrency(stats.totalRevenue)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
       )}
     </div>
   );
 }
+
+// Helper function
+
